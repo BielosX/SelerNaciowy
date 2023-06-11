@@ -1,6 +1,6 @@
 package org.selernaciowy;
 
-import org.selernaciowy.netty.NettyFacade;
+import org.selernaciowy.netty.NettyHttpServer;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
@@ -11,7 +11,7 @@ public class ContextRefreshedEventListener {
     @EventListener
     public void handleContextRefreshEvent(ContextRefreshedEvent event) throws Exception {
         ApplicationContext context = event.getApplicationContext();
-        NettyFacade facade = context.getBean(NettyFacade.class);
-        facade.start();
+        NettyHttpServer server = context.getBean(NettyHttpServer.class);
+        server.start();
     }
 }

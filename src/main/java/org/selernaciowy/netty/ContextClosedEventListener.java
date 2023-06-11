@@ -13,7 +13,7 @@ public class ContextClosedEventListener {
     @EventListener
     public void handleContextCloseEvent(ContextClosedEvent event) {
         ApplicationContext context = event.getApplicationContext();
-        NettyFacade facade = context.getBean(NettyFacade.class);
-        facade.shutdownGracefully();
+        NettyHttpServer server = context.getBean(NettyHttpServer.class);
+        server.shutdownGracefully();
     }
 }

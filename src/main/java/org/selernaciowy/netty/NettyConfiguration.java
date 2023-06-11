@@ -16,10 +16,13 @@ public class NettyConfiguration {
     private int port;
 
     @Bean
-    public NettyFacade nettyFacade() {
-        HttpRequestHandler handler = new HttpRequestHandler();
+    public HttpRequestHandler requestHandler() {
+        return new HttpRequestHandler();
+    }
+
+    @Bean
+    public NettyHttpServer httpServer(HttpRequestHandler handler) {
         HttpServerInitializer initializer = new HttpServerInitializer(handler, maxContentLength);
-        NettyHttpServer server = new NettyHttpServer(workers, port, initializer);
-        return new NettyFacade(server);
+        return new NettyHttpServer(workers, port, initializer);
     }
 }

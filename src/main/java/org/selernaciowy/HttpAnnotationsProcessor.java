@@ -1,10 +1,12 @@
 package org.selernaciowy;
 
+import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.selernaciowy.annotations.HttpController;
 import org.selernaciowy.annotations.HttpMethod;
 import org.selernaciowy.annotations.HttpPathPrefix;
+import org.selernaciowy.netty.HttpRequestHandler;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.stereotype.Component;
@@ -18,8 +20,10 @@ import java.util.Optional;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class HttpAnnotationsProcessor implements BeanPostProcessor {
     private static final String VALUE_METHOD_NAME = "value";
+    private final HttpRequestHandler requestHandler;
 
     private static boolean isHttpMethod(Annotation annotation) {
         return annotation.annotationType().isAnnotationPresent(HttpMethod.class);
@@ -34,21 +38,31 @@ public class HttpAnnotationsProcessor implements BeanPostProcessor {
         return (String)annotation.annotationType().getMethod(VALUE_METHOD_NAME).invoke(annotation);
     }
 
-    private record HttpMethodMapping(HttpRequestMethod httpMethod, Annotation annotation, Method method) {}
+    private record HttpMethodMapping(HttpRequestMethod httpMethod,
+                                     Annotation annotation,
+                                     Method method,
+                                     Object invoker) {}
 
-    private static Optional<HttpMethodMapping> getHttpMethodAnnotation(Method method) {
+    private static Optional<HttpMethodMapping> getHttpMethodAnnotation(Method method, Object invoker) {
         return Arrays.stream(method.getAnnotations())
                 .filter(HttpAnnotationsProcessor::isHttpMethod)
                 .findFirst()
-                .map(annotation -> new HttpMethodMapping(getMethod(annotation), annotation, method));
+                .map(annotation -> new HttpMethodMapping(getMethod(annotation), annotation, method, invoker));
     }
 
-    private static void processMapping(HttpMethodMapping mapping, String prefix) {
+    private void processMapping(HttpMethodMapping mapping, String prefix) {
         String path = prefix + getValue(mapping.annotation());
         log.info("Found {} mapping. Path: {}, method: {}",
                 mapping.httpMethod(),
                 path,
                 mapping.method().getName());
+        List<String> segments = Arrays.stream(path.split("/"))
+                .filter(str -> !str.isBlank())
+                .toList();
+        requestHandler.registerMethod(mapping.httpMethod(),
+                segments,
+                mapping.method(),
+                mapping.invoker());
     }
 
     @Override
@@ -60,7 +74,7 @@ public class HttpAnnotationsProcessor implements BeanPostProcessor {
                     .map(HttpPathPrefix::value)
                     .orElse("");
             List<HttpMethodMapping> mappings = Arrays.stream(cls.getMethods())
-                    .flatMap(method -> getHttpMethodAnnotation(method)
+                    .flatMap(method -> getHttpMethodAnnotation(method, bean)
                             .map(Collections::singletonList)
                             .orElse(Collections.emptyList()).stream())
                     .toList();
