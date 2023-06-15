@@ -1,0 +1,5 @@
+server:
+  port: 8080
+netty:
+  workers: 4
+  maxContentLength: 1048576
