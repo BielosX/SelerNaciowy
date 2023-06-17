@@ -1,16 +1,18 @@
 package org.selernaciowy.netty;
 
-import org.springframework.beans.factory.annotation.Value;
+import lombok.Setter;
+import org.selernaciowy.annotations.PropertyValue;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
+@Setter
 public class NettyConfiguration {
-    @Value("${netty.maxContentLength}")
+    @PropertyValue("${netty.maxContentLength}")
     private int maxContentLength;
-    @Value("${netty.workers}")
+    @PropertyValue("${netty.workers}")
     private int workers;
-    @Value("${server.port}")
+    @PropertyValue("${server.port}")
     private int port;
 
     @Bean
