@@ -9,10 +9,11 @@ import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.InitializingBean;
 
 @Slf4j
 @RequiredArgsConstructor
-public class NettyHttpServer {
+public class NettyHttpServer implements InitializingBean {
     private final int workers;
     private final int port;
     private final HttpServerInitializer initializer;
@@ -36,5 +37,10 @@ public class NettyHttpServer {
     public void shutdownGracefully() {
         producerGroup.shutdownGracefully();
         workersGroup.shutdownGracefully();
+    }
+
+    @Override
+    public void afterPropertiesSet() throws Exception {
+        start();
     }
 }
