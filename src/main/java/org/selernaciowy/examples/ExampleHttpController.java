@@ -28,9 +28,11 @@ public class ExampleHttpController {
     }
 
     private record ExampleBody(int count, String name) {}
+    private record ExampleResponse(String number, String text) {}
 
     @HttpPost("/users")
-    public void requestBodyPost(@RequestBody ExampleBody body) {
+    public ExampleResponse requestBodyPost(@RequestBody ExampleBody body) {
         log.info("Hello from /users, count: {}, name: {}", body.count(), body.name());
+        return new ExampleResponse(String.valueOf(body.count()), body.name());
     }
 }
