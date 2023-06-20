@@ -22,17 +22,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.selernaciowy.HttpPathSegment;
 import org.selernaciowy.HttpRequestMethod;
 import org.selernaciowy.annotations.PathParam;
+import org.selernaciowy.annotations.QueryParam;
 import org.selernaciowy.annotations.RequestBody;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.convert.support.DefaultConversionService;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @ChannelHandler.Sharable
@@ -58,28 +58,42 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     @SneakyThrows
+    private void setUriParam(Object[] methodParams,
+                                    int idx,
+                                    Map<String,String> params,
+                                    Parameter methodParameter,
+                                    Annotation annotation) {
+        if (annotation != null) {
+            String paramName;
+            Method valueMethod = annotation.annotationType().getMethod("value");
+            String value = (String)valueMethod.invoke(annotation);
+            if (value.equals("")) {
+                paramName = methodParameter.getName();
+            } else {
+                paramName = value;
+            }
+            String paramValue = params.get(paramName);
+            methodParams[idx] = conversionService.convert(paramValue, methodParameter.getType());
+        }
+    }
+
+    @SneakyThrows
     private Object invoke(HttpPathSegment.InvokerAndMethod invokerAndMethod,
                           Map<String, String> pathParams,
-                          ByteBuf content) {
+                          ByteBuf content,
+                          Map<String,String> queryParams) {
         Parameter[] methodParams = invokerAndMethod.method().getParameters();
         Object[] resolvedParams = new Object[methodParams.length];
         for (int idx = 0; idx < methodParams.length; idx++) {
             Parameter methodParameter = methodParams[idx];
             PathParam pathParam = methodParameter.getAnnotation(PathParam.class);
-            if (pathParam != null) {
-                String paramName;
-                if (pathParam.value().equals("")) {
-                    paramName = methodParameter.getName();
-                } else {
-                    paramName = pathParam.value();
-                }
-                String paramValue = pathParams.get(paramName);
-                resolvedParams[idx] = conversionService.convert(paramValue, methodParameter.getType());
-            }
+            setUriParam(resolvedParams, idx, pathParams, methodParameter, pathParam);
             RequestBody requestBody = methodParameter.getAnnotation(RequestBody.class);
             if (requestBody != null) {
                 resolvedParams[idx] = readContent(content, methodParameter.getType());
             }
+            QueryParam queryParam = methodParameter.getAnnotation(QueryParam.class);
+            setUriParam(resolvedParams, idx, queryParams, methodParameter, queryParam);
         }
         return invokerAndMethod.method().invoke(invokerAndMethod.invoker(), resolvedParams);
     }
@@ -110,17 +124,43 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         return gson.fromJson(payload, cls);
     }
 
+    private record QueryParameter(String key, String value) {
+        static QueryParameter fromString(String str) {
+            String[] result = str.split("=");
+            return new QueryParameter(result[0], result[1]);
+        }
+    }
+
+    private static Map<String,String> getQueryParams(String uri) {
+        String[] splitResult = uri.split("\\?");
+        if (splitResult.length > 1) {
+            return Arrays.stream(splitResult[1].split("&"))
+                    .map(QueryParameter::fromString)
+                    .collect(Collectors.toMap(QueryParameter::key, QueryParameter::value));
+        }
+        return Collections.emptyMap();
+    }
+
+    private static String getPath(String uri) {
+        return uri.split("\\?")[0];
+    }
+
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         if (msg instanceof FullHttpRequest request) {
-            List<String> segments = Arrays.stream(request.uri().split("/"))
+            String path = getPath(request.uri());
+            List<String> segments = Arrays.stream(path.split("/"))
                     .filter(str -> !str.isBlank())
                     .toList();
+            Map<String,String> queryParams = getQueryParams(request.uri());
             HttpRequestMethod requestMethod = methodsMapping.get(request.method());
             Map<String,String> pathParams = new HashMap<>();
             ChannelFuture future = root.findMapping(requestMethod, segments, pathParams)
                     .map(invokerAndMethod -> {
-                        Object result = invoke(invokerAndMethod, pathParams, request.content());
+                        Object result = invoke(invokerAndMethod,
+                                pathParams,
+                                request.content(),
+                                queryParams);
                         Class<?> returnType = invokerAndMethod.method().getReturnType();
                         if (returnType.equals(void.class) || returnType.equals(Void.class)) {
                             return ctx.write(emptyResponse(request.protocolVersion()));

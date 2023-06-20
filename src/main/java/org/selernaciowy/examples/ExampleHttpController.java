@@ -35,4 +35,10 @@ public class ExampleHttpController {
         log.info("Hello from /users, count: {}, name: {}", body.count(), body.name());
         return new ExampleResponse(String.valueOf(body.count()), body.name());
     }
+
+    @HttpPost("/users/query")
+    public void requestQueryParam(@QueryParam int number,
+                                  @QueryParam("client_id") String clientId) {
+        log.info("Hello from /users/query, number: {}, clientId: {}", number, clientId);
+    }
 }
