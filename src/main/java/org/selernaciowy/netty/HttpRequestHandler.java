@@ -20,10 +20,15 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.selernaciowy.HttpPathSegment;
 import org.selernaciowy.HttpRequestMethod;
+import org.selernaciowy.annotations.PathParam;
+import org.springframework.core.convert.ConversionService;
+import org.springframework.core.convert.support.DefaultConversionService;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -32,6 +37,7 @@ import java.util.Map;
 public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
     private final HttpPathSegment root = new HttpPathSegment();
     private final Gson gson = new Gson();
+    private final ConversionService conversionService = DefaultConversionService.getSharedInstance();
     private final static Map<HttpMethod, HttpRequestMethod> methodsMapping = Map.of(
             HttpMethod.GET, HttpRequestMethod.GET,
             HttpMethod.POST, HttpRequestMethod.POST
@@ -50,8 +56,25 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     @SneakyThrows
-    private static Object invoke(HttpPathSegment.InvokerAndMethod invokerAndMethod) {
-        return invokerAndMethod.method().invoke(invokerAndMethod.invoker());
+    private Object invoke(HttpPathSegment.InvokerAndMethod invokerAndMethod,
+                                 Map<String, String> pathParams) {
+        Parameter[] methodParams = invokerAndMethod.method().getParameters();
+        Object[] resolvedParams = new Object[methodParams.length];
+        for (int idx = 0; idx < methodParams.length; idx++) {
+            Parameter methodParameter = methodParams[idx];
+            PathParam pathParam = methodParameter.getAnnotation(PathParam.class);
+            if (pathParam != null) {
+                String paramName;
+                if (pathParam.value().equals("")) {
+                    paramName = methodParameter.getName();
+                } else {
+                    paramName = pathParam.value();
+                }
+                String paramValue = pathParams.get(paramName);
+                resolvedParams[idx] = conversionService.convert(paramValue, methodParameter.getType());
+            }
+        }
+        return invokerAndMethod.method().invoke(invokerAndMethod.invoker(), resolvedParams);
     }
 
     private static FullHttpResponse notFound(HttpVersion version) {
@@ -79,9 +102,10 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                     .filter(str -> !str.isBlank())
                     .toList();
             HttpRequestMethod requestMethod = methodsMapping.get(request.method());
-            ChannelFuture future = root.findMapping(requestMethod, segments)
+            Map<String,String> pathParams = new HashMap<>();
+            ChannelFuture future = root.findMapping(requestMethod, segments, pathParams)
                     .map(invokerAndMethod -> {
-                        Object result = invoke(invokerAndMethod);
+                        Object result = invoke(invokerAndMethod, pathParams);
                         Class<?> returnType = invokerAndMethod.method().getReturnType();
                         if (returnType.equals(void.class) || returnType.equals(Void.class)) {
                             return ctx.write(emptyResponse(request.protocolVersion()));
