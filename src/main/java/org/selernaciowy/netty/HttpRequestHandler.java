@@ -1,6 +1,7 @@
 package org.selernaciowy.netty;
 
 import com.google.gson.Gson;
+import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -21,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.selernaciowy.HttpPathSegment;
 import org.selernaciowy.HttpRequestMethod;
 import org.selernaciowy.annotations.PathParam;
+import org.selernaciowy.annotations.RequestBody;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.convert.support.DefaultConversionService;
 
@@ -57,7 +59,8 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
 
     @SneakyThrows
     private Object invoke(HttpPathSegment.InvokerAndMethod invokerAndMethod,
-                                 Map<String, String> pathParams) {
+                          Map<String, String> pathParams,
+                          ByteBuf content) {
         Parameter[] methodParams = invokerAndMethod.method().getParameters();
         Object[] resolvedParams = new Object[methodParams.length];
         for (int idx = 0; idx < methodParams.length; idx++) {
@@ -72,6 +75,10 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                 }
                 String paramValue = pathParams.get(paramName);
                 resolvedParams[idx] = conversionService.convert(paramValue, methodParameter.getType());
+            }
+            RequestBody requestBody = methodParameter.getAnnotation(RequestBody.class);
+            if (requestBody != null) {
+                resolvedParams[idx] = readContent(content, methodParameter.getType());
             }
         }
         return invokerAndMethod.method().invoke(invokerAndMethod.invoker(), resolvedParams);
@@ -95,6 +102,14 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         return response;
     }
 
+    private <T> T readContent(ByteBuf content, Class<T> cls) {
+        int bufferLen = content.readableBytes();
+        byte[] bytes = new byte[bufferLen];
+        content.readBytes(bytes);
+        String payload = new String(bytes, StandardCharsets.UTF_8);
+        return gson.fromJson(payload, cls);
+    }
+
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         if (msg instanceof FullHttpRequest request) {
@@ -105,7 +120,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             Map<String,String> pathParams = new HashMap<>();
             ChannelFuture future = root.findMapping(requestMethod, segments, pathParams)
                     .map(invokerAndMethod -> {
-                        Object result = invoke(invokerAndMethod, pathParams);
+                        Object result = invoke(invokerAndMethod, pathParams, request.content());
                         Class<?> returnType = invokerAndMethod.method().getReturnType();
                         if (returnType.equals(void.class) || returnType.equals(Void.class)) {
                             return ctx.write(emptyResponse(request.protocolVersion()));

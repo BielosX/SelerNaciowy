@@ -1,11 +1,7 @@
 package org.selernaciowy.examples;
 
 import lombok.extern.slf4j.Slf4j;
-import org.selernaciowy.annotations.HttpController;
-import org.selernaciowy.annotations.HttpGet;
-import org.selernaciowy.annotations.HttpPathPrefix;
-import org.selernaciowy.annotations.HttpPost;
-import org.selernaciowy.annotations.PathParam;
+import org.selernaciowy.annotations.*;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -29,5 +25,12 @@ public class ExampleHttpController {
     public void pathParamPost(@PathParam("userId") String userId,
                               @PathParam int bookId) {
         log.info("Hello from POST /users/{}/books/{}", userId, bookId);
+    }
+
+    private record ExampleBody(int count, String name) {}
+
+    @HttpPost("/users")
+    public void requestBodyPost(@RequestBody ExampleBody body) {
+        log.info("Hello from /users, count: {}, name: {}", body.count(), body.name());
     }
 }
