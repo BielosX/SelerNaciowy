@@ -19,6 +19,7 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.util.ReferenceCountUtil;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.selernaciowy.HttpHeaders;
 import org.selernaciowy.HttpPathSegment;
 import org.selernaciowy.HttpRequestMethod;
 import org.selernaciowy.annotations.PathParam;
@@ -33,6 +34,7 @@ import java.lang.reflect.Parameter;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @ChannelHandler.Sharable
@@ -81,7 +83,8 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
     private Object invoke(HttpPathSegment.InvokerAndMethod invokerAndMethod,
                           Map<String, String> pathParams,
                           ByteBuf content,
-                          Map<String,String> queryParams) {
+                          Map<String,String> queryParams,
+                          HttpHeaders headers) {
         Parameter[] methodParams = invokerAndMethod.method().getParameters();
         Object[] resolvedParams = new Object[methodParams.length];
         for (int idx = 0; idx < methodParams.length; idx++) {
@@ -94,6 +97,9 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             }
             QueryParam queryParam = methodParameter.getAnnotation(QueryParam.class);
             setUriParam(resolvedParams, idx, queryParams, methodParameter, queryParam);
+            if (methodParameter.getType().equals(HttpHeaders.class)) {
+                resolvedParams[idx] = headers;
+            }
         }
         return invokerAndMethod.method().invoke(invokerAndMethod.invoker(), resolvedParams);
     }
@@ -104,6 +110,10 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
 
     private static FullHttpResponse emptyResponse(HttpVersion version) {
         return new DefaultFullHttpResponse(version, HttpResponseStatus.NO_CONTENT);
+    }
+
+    private static FullHttpResponse serverError(HttpVersion version) {
+        return new DefaultFullHttpResponse(version, HttpResponseStatus.INTERNAL_SERVER_ERROR);
     }
 
     private static FullHttpResponse withBody(HttpVersion version, String body) {
@@ -145,6 +155,19 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         return uri.split("\\?")[0];
     }
 
+    private static HttpHeaders getHttpHeaders(FullHttpRequest request) {
+        Map<String, List<String>> headers = request.headers()
+                .entries()
+                .stream()
+                .collect(Collectors.toMap(e -> e.getKey().toLowerCase(),
+                        e -> Stream.of(e.getValue()), Stream::concat))
+                .entrySet()
+                .stream()
+                .map(entry -> Map.entry(entry.getKey(), entry.getValue().toList()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        return new HttpHeaders(headers);
+    }
+
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         if (msg instanceof FullHttpRequest request) {
@@ -155,18 +178,25 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             Map<String,String> queryParams = getQueryParams(request.uri());
             HttpRequestMethod requestMethod = methodsMapping.get(request.method());
             Map<String,String> pathParams = new HashMap<>();
+            HttpHeaders headers = getHttpHeaders(request);
             ChannelFuture future = root.findMapping(requestMethod, segments, pathParams)
                     .map(invokerAndMethod -> {
-                        Object result = invoke(invokerAndMethod,
-                                pathParams,
-                                request.content(),
-                                queryParams);
-                        Class<?> returnType = invokerAndMethod.method().getReturnType();
-                        if (returnType.equals(void.class) || returnType.equals(Void.class)) {
-                            return ctx.write(emptyResponse(request.protocolVersion()));
-                        } else {
-                            String responseString = gson.toJson(result);
-                            return ctx.write(withBody(request.protocolVersion(), responseString));
+                        try {
+                            Object result = invoke(invokerAndMethod,
+                                    pathParams,
+                                    request.content(),
+                                    queryParams,
+                                    headers);
+                            Class<?> returnType = invokerAndMethod.method().getReturnType();
+                            if (returnType.equals(void.class) || returnType.equals(Void.class)) {
+                                return ctx.write(emptyResponse(request.protocolVersion()));
+                            } else {
+                                String responseString = gson.toJson(result);
+                                return ctx.write(withBody(request.protocolVersion(), responseString));
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            return ctx.write(serverError(request.protocolVersion()));
                         }
                     })
                     .orElseGet(() -> ctx.write(notFound(request.protocolVersion())));

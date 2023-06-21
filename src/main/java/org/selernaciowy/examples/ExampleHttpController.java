@@ -1,6 +1,7 @@
 package org.selernaciowy.examples;
 
 import lombok.extern.slf4j.Slf4j;
+import org.selernaciowy.HttpHeaders;
 import org.selernaciowy.annotations.*;
 import org.springframework.stereotype.Component;
 
@@ -40,5 +41,19 @@ public class ExampleHttpController {
     public void requestQueryParam(@QueryParam int number,
                                   @QueryParam("client_id") String clientId) {
         log.info("Hello from /users/query, number: {}, clientId: {}", number, clientId);
+    }
+
+    @HttpGet("/error")
+    public void serverError() {
+        log.info("Hello from /error");
+        throw new IllegalStateException();
+    }
+
+    @HttpGet("/headers")
+    public String getHeader(HttpHeaders headers) {
+        log.info("Hello from /headers");
+        return headers.get("content-type")
+                .stream().findAny()
+                .orElse("");
     }
 }
