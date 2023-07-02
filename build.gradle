@@ -38,6 +38,8 @@ dependencies {
     implementation 'ch.qos.reload4j:reload4j:1.2.25'
     implementation 'com.google.code.gson:gson:2.10.1'
     implementation 'org.yaml:snakeyaml:2.0'
+    implementation 'org.springframework:spring-aop:6.0.10'
+    implementation 'org.springframework:spring-aspects:6.0.10'
 }
 
 test {

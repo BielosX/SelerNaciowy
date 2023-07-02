@@ -1,15 +1,20 @@
 package org.selernaciowy.examples;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.selernaciowy.HttpHeaders;
 import org.selernaciowy.annotations.*;
 import org.springframework.stereotype.Component;
 
+import java.util.UUID;
+
 @Slf4j
 @Component
 @HttpController
 @HttpPathPrefix("/api/v1")
+@RequiredArgsConstructor
 public class ExampleHttpController {
+    private final ExampleService service;
 
     @HttpGet("/hello")
     public String hello() {
@@ -55,5 +60,19 @@ public class ExampleHttpController {
         return headers.get("content-type")
                 .stream().findAny()
                 .orElse("");
+    }
+
+    @HttpGet("/cached/:id")
+    public String getCachedName(@PathParam UUID id) {
+        return service.getNameById(id).orElse("");
+    }
+
+    private record SetNameRequest(String name) {}
+
+    @HttpPost("/cached")
+    public UUID setName(@RequestBody SetNameRequest body) {
+        UUID id = UUID.randomUUID();
+        service.setName(id, body.name());
+        return id;
     }
 }
