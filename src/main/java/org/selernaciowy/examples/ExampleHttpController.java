@@ -6,6 +6,7 @@ import org.selernaciowy.HttpHeaders;
 import org.selernaciowy.annotations.*;
 import org.springframework.stereotype.Component;
 
+import java.util.Objects;
 import java.util.UUID;
 
 @Slf4j
@@ -64,7 +65,8 @@ public class ExampleHttpController {
 
     @HttpGet("/cached/:id")
     public String getCachedName(@PathParam UUID id) {
-        return service.getNameById(id).orElse("");
+        String value = service.getNameById(id);
+        return Objects.requireNonNullElse(value, "");
     }
 
     private record SetNameRequest(String name) {}

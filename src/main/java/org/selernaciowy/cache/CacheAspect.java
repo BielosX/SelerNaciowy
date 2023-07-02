@@ -39,12 +39,6 @@ public class CacheAspect {
                 log.info("Method returned null");
                 return null;
             }
-            if (result instanceof Optional<?> optional) {
-                if (optional.isEmpty()) {
-                    log.info("Method returned empty Optional");
-                    return Optional.empty();
-                }
-            }
             cache.set(key, result, Duration.parse(cached.ttl()));
             return result;
         }
